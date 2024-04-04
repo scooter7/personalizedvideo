@@ -1,40 +1,56 @@
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
-import streamlit as st
+import cv2
 import pandas as pd
-import os
+import streamlit as st
 import tempfile
+import os
 
-st.title("Personalized Video Generator")
-
+# Streamlit file uploaders
 source_video = st.file_uploader("Upload your source video", type=["mp4"])
 csv_file = st.file_uploader("Upload your CSV file of names", type=["csv"])
 
 if source_video and csv_file:
-    # Read names from the uploaded CSV
-    df = pd.read_csv(csv_file)
-    names = df['FirstName'].unique()  # Assuming 'FirstName' column exists
-
-    # Save the uploaded video to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+    # Temporarily save the uploaded video
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
         tmp.write(source_video.read())
         video_path = tmp.name
+    
+    df = pd.read_csv(csv_file)
+    names = df['FirstName'].unique()
 
     for name in names:
-        output_video_path = f"temp_{name}.mp4"
+        # Read the video file
+        cap = cv2.VideoCapture(video_path)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
 
-        clip = VideoFileClip(video_path)
-        # Using default settings for TextClip to avoid triggering ImageMagick
-        txt_clip = (TextClip(f"Hello, {name}!", fontsize=70, color='white')
-                    .set_position("center")
-                    .set_duration(10))
-        
-        video = CompositeVideoClip([clip, txt_clip])
+        # Define the codec and create VideoWriter object
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v') # Be sure to use lower case
+        output_path = f"{name}_personalized.mp4"
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-        video.write_videofile(output_video_path, codec="libx264", fps=24)
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        with open(output_video_path, 'rb') as file:
-            st.download_button(f"Download {name}'s Video", file, file_name=output_video_path, mime="video/mp4")
+            # Put text on the frame
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(frame, f"Hello, {name}!", (50, 50), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+            
+            # Write the frame with text
+            out.write(frame)
 
-        os.remove(output_video_path)  # Optional: Remove the file after downloading
+        # Release everything if job is finished
+        cap.release()
+        out.release()
 
-    os.remove(video_path)  # Cleanup the temporary source video file
+        # Provide download link
+        with open(output_path, 'rb') as f:
+            st.download_button(f"Download {name}'s Video", f, file_name=output_path, mime="video/mp4")
+
+        # Optional: Remove the processed file to save space
+        os.remove(output_path)
+
+    # Cleanup: remove the source video temporary file
+    os.remove(video_path)
