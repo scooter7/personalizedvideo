@@ -4,47 +4,42 @@ from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 import tempfile
 import os
 
-# Upload CSV with names
-df = pd.read_csv('people_videos.csv')  # This assumes the CSV is in the same directory as the app
+# Title
+st.title("Personalized Video Generator")
 
-# File uploader for the source video
-source_video = st.file_uploader("Upload a source video", type=["mp4"])
+# File uploaders for the source video and CSV file
+source_video = st.file_uploader("Upload your source video", type=["mp4"])
+csv_file = st.file_uploader("Upload your CSV file of names", type=["csv"])
 
-if source_video is not None:
-    # Use tempfile to create a temporary file on disk
+# Directory for processed videos (ensure this exists or create it)
+output_dir = "processed_videos"
+os.makedirs(output_dir, exist_ok=True)
+
+if source_video and csv_file:
+    # Temporary storage for the uploaded video
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
-        tmp.write(source_video.getvalue())
-        source_video_path = tmp.name  # Path to the uploaded video file saved temporarily
+        tmp.write(source_video.read())
+        video_path = tmp.name  # Path to the uploaded video file saved temporarily
+    
+    # Read names from the uploaded CSV
+    df = pd.read_csv(csv_file)
+    # Assuming there's a column named 'FirstName' in the CSV
+    names = df['FirstName'].unique()  # Process each name once
 
-    selected_name = st.selectbox('Select a name:', df['FirstName'])
-
-    if selected_name:
-        # Generate personalized video for the selected name
-        output_filename = f'personalized_{selected_name}.mp4'
-        output_filepath = os.path.join('temp_videos', output_filename)
+    # Process each name
+    for name in names:
+        output_video_path = os.path.join(output_dir, f"{name}_personalized.mp4")
         
-        if not os.path.exists('temp_videos'):
-            os.makedirs('temp_videos')
+        # Check if the video already exists to avoid reprocessing
+        if not os.path.exists(output_video_path):
+            clip = VideoFileClip(video_path)
+            txt_clip = TextClip(f"Hello, {name}!", fontsize=70, color='white', font="Arial-Bold", size=clip.size).set_duration(clip.duration).set_position("center").set_opacity(0.5)
+            final_clip = CompositeVideoClip([clip, txt_clip])
+            final_clip.write_videofile(output_video_path, codec="libx264", fps=24)
+        
+        # Provide download link for the processed video
+        with open(output_video_path, "rb") as file:
+            st.download_button(label=f"Download video for {name}", data=file, file_name=f"{name}_personalized.mp4", mime="video/mp4")
 
-        if not os.path.exists(output_filepath):  # Check if the video was already generated
-            # Load the base video from the temporary file
-            clip = VideoFileClip(source_video_path)
-            
-            # Generate a text clip
-            txt_clip = TextClip(f'Hello, {selected_name}!', fontsize=70, color='white', font='Arial-Bold')
-            txt_clip = txt_clip.set_pos('center').set_duration(10)
-            
-            # Overlay the text on the base video
-            video = CompositeVideoClip([clip, txt_clip.set_start(1).set_end(9)], size=clip.size)
-            
-            # Write the result to a file in the temp_videos directory
-            video.write_videofile(output_filepath, codec='libx264', fps=24)
-
-        # Provide a download link
-        with open(output_filepath, 'rb') as file:
-            st.download_button(
-                label=f'Download video for {selected_name}',
-                data=file,
-                file_name=output_filename,
-                mime='video/mp4'
-            )
+    # Cleanup: Remove the temporary uploaded video file
+    os.unlink(video_path)
