@@ -4,9 +4,6 @@ from moviepy.config import change_settings
 import os
 import tempfile
 
-# Specify the path to the ImageMagick binary
-change_settings({'IMAGEMAGICK_BINARY': r'C:\ImageMagick-7.1.1-Q16\magick.exe'})
-
 # After setting the ImageMagick path, import VideoFileClip and other moviepy functionalities
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 
