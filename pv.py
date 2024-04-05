@@ -1,12 +1,18 @@
 import streamlit as st
 import pandas as pd
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy.config import change_settings
 import os
-import tempfile  # Import tempfile to create temporary files
+import tempfile
+
+# Specify the path to the ImageMagick binary
+change_settings({'IMAGEMAGICK_BINARY': r'C:\ImageMagick-7.1.1-Q16\magick.exe'})
+
+# After setting the ImageMagick path, import VideoFileClip and other moviepy functionalities
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 
 st.title("Video Personalization App")
 
-# File uploaders
+# File uploaders for video and CSV
 video_file = st.file_uploader("Choose a video file", type=["mp4"])
 csv_file = st.file_uploader("Choose a CSV file")
 
@@ -16,44 +22,35 @@ if video_file is not None and csv_file is not None:
     first_names = df['FirstName'].tolist()
 
     # Temporary directory to save personalized videos
-    if not os.path.exists('temp_videos'):
-        os.makedirs('temp_videos')
+    output_dir = 'temp_videos'
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-    # Save the uploaded video file to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video_file:
-        temp_video_file.write(video_file.getvalue())
-        temp_video_path = temp_video_file.name  # This is the path to the temporary file
-
+    # Process each name in the CSV
     with st.spinner('Processing videos... Please wait.'):
+        # Save the uploaded video file to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video_file:
+            temp_video_file.write(video_file.getvalue())
+            temp_video_path = temp_video_file.name  # Path to the temporary video file
+        
         for name in first_names:
-            # Load the video file from the temporary file
+            # Create a personalized video for each name
+            output_filename = os.path.join(output_dir, f"personalized_{name}.mp4")
             clip = VideoFileClip(temp_video_path)
-            
-            # Create a text clip
-            txt_clip = TextClip(f"{name}, please enroll at ABC College", fontsize=24, color='white')
-            txt_clip = txt_clip.set_position('center').set_duration(10)
-            
-            # Overlay the text on the original video clip
-            video = CompositeVideoClip([clip, txt_clip])
-            
-            # Output file name
-            output_filename = f"temp_videos/personalized_{name}.mp4"
-            
-            # Write the result to a file
+            txt_clip = TextClip(f"{name}, please enroll at ABC College", fontsize=24, color='white', font="Arial-Bold", size=(clip.size[0],50)).set_pos('center').set_duration(10)
+            video = CompositeVideoClip([clip, txt_clip.set_start(1).set_end(9)], size=clip.size)
             video.write_videofile(output_filename, codec="libx264", fps=24)
+            
+            # Provide download links
+            with open(output_filename, "rb") as file:
+                st.download_button(
+                    label=f"Download {name}'s Video",
+                    data=file,
+                    file_name=f"personalized_{name}.mp4",
+                    mime="video/mp4"
+                )
 
-        # Optionally, delete the temporary video file if it's no longer needed
+        # Cleanup: Remove the temporary source video file
         os.unlink(temp_video_path)
 
     st.success('Videos processed successfully!')
-
-    # Provide download links
-    for name in first_names:
-        output_filename = f"temp_videos/personalized_{name}.mp4"
-        with open(output_filename, "rb") as file:
-            st.download_button(
-                label=f"Download {name}'s Video",
-                data=file,
-                file_name=output_filename,
-                mime="video/mp4"
-            )
