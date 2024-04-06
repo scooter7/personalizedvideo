@@ -1,53 +1,68 @@
 import streamlit as st
 import pandas as pd
-from moviepy.config import change_settings
-import os
+import cv2
+import numpy as np
 import tempfile
-
-# After setting the ImageMagick path, import VideoFileClip and other moviepy functionalities
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+import os
 
 st.title("Video Personalization App")
 
-# File uploaders for video and CSV
+# File uploaders
 video_file = st.file_uploader("Choose a video file", type=["mp4"])
 csv_file = st.file_uploader("Choose a CSV file")
 
-if video_file is not None and csv_file is not None:
+if video_file and csv_file:
     # Read CSV file
     df = pd.read_csv(csv_file)
     first_names = df['FirstName'].tolist()
 
-    # Temporary directory to save personalized videos
-    output_dir = 'temp_videos'
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    # Save the uploaded video to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+        tmp.write(video_file.read())
+        video_path = tmp.name  # Temporary video file path
 
-    # Process each name in the CSV
+    # Process the video for each name
     with st.spinner('Processing videos... Please wait.'):
-        # Save the uploaded video file to a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video_file:
-            temp_video_file.write(video_file.getvalue())
-            temp_video_path = temp_video_file.name  # Path to the temporary video file
-        
         for name in first_names:
-            # Create a personalized video for each name
-            output_filename = os.path.join(output_dir, f"personalized_{name}.mp4")
-            clip = VideoFileClip(temp_video_path)
-            txt_clip = TextClip(f"{name}, please enroll at ABC College", fontsize=24, color='white', font="Arial-Bold", size=(clip.size[0],50)).set_pos('center').set_duration(10)
-            video = CompositeVideoClip([clip, txt_clip.set_start(1).set_end(9)], size=clip.size)
-            video.write_videofile(output_filename, codec="libx264", fps=24)
+            cap = cv2.VideoCapture(video_path)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
             
-            # Provide download links
+            # Define the codec and create VideoWriter object
+            fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+            output_filename = f"personalized_{name}.mp4"
+            out = cv2.VideoWriter(output_filename, fourcc, fps, (width, height))
+
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                # Place text on each frame
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                text = f"{name}, please enroll at ABC College"
+                textsize = cv2.getTextSize(text, font, 1, 2)[0]
+                textX = (width - textsize[0]) // 2
+                textY = (height + textsize[1]) // 2
+                cv2.putText(frame, text, (textX, textY), font, 1, (255, 255, 255), 2)
+
+                out.write(frame)
+
+            cap.release()
+            out.release()
+
+            # Provide a download link for the processed video
             with open(output_filename, "rb") as file:
                 st.download_button(
                     label=f"Download {name}'s Video",
                     data=file,
-                    file_name=f"personalized_{name}.mp4",
+                    file_name=output_filename,
                     mime="video/mp4"
                 )
 
-        # Cleanup: Remove the temporary source video file
-        os.unlink(temp_video_path)
+            # Optionally, remove the processed video file to save space
+            os.remove(output_filename)
 
-    st.success('Videos processed successfully!')
+    # Cleanup: Remove the temporary source video file
+    os.unlink(video_path)
